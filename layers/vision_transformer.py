@@ -204,6 +204,7 @@ class DinoVisionTransformer(nn.Module):
         else:
             # Simply specify an output size instead of a scale factor
             kwargs["size"] = (w0, h0)
+            # import pdb; pdb.set_trace()
         patch_pos_embed = nn.functional.interpolate(
             patch_pos_embed.reshape(1, M, M, dim).permute(0, 3, 1, 2),
             mode="bicubic",

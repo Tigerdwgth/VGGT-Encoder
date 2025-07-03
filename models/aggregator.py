@@ -68,7 +68,7 @@ class Aggregator(nn.Module):
         init_values=0.01,
     ):
         super().__init__()
-
+        print(f"img_size{img_size}, patch_size: {patch_size}, embed_dim: {embed_dim}, depth: {depth}, num_heads: {num_heads}, mlp_ratio: {mlp_ratio}, num_register_tokens: {num_register_tokens}, patch_embed: {patch_embed}, aa_order: {aa_order}, aa_block_size: {aa_block_size}, qk_norm: {qk_norm}, rope_freq: {rope_freq}, init_values: {init_values}")
         self.__build_patch_embed__(patch_embed, img_size, patch_size, num_register_tokens, embed_dim=embed_dim)
 
         # Initialize rotary position embedding if frequency > 0
@@ -205,11 +205,12 @@ class Aggregator(nn.Module):
 
         # Normalize images and reshape for patch embed
         images = (images - self._resnet_mean) / self._resnet_std
-
+        # print(f"images shape: {images.shape}, B: {B}, S: {S}, C_in: {C_in}, H: {H}, W: {W}")
         # Reshape to [B*S, C, H, W] for patch embedding
         images = images.view(B * S, C_in, H, W)
+        # print(f"images reshaped: {images.shape}")
         patch_tokens = self.patch_embed(images)
-
+        
         if isinstance(patch_tokens, dict):
             patch_tokens = patch_tokens["x_norm_patchtokens"]
 
