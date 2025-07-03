@@ -7,7 +7,10 @@
 import torch
 import torch.nn as nn
 from huggingface_hub import PyTorchModelHubMixin  # used for model hub
-
+from coremltools.optimize.torch.quantization import (
+    PostTrainingQuantizerConfig,
+    PostTrainingQuantizer,
+)
 
 from diffusion_policy_3d.model.vision.vggt.models.aggregator import Aggregator
 from diffusion_policy_3d.model.vision. vggt.heads.camera_head import CameraHead
@@ -33,8 +36,22 @@ class VGGT_ENC(nn.Module, PyTorchModelHubMixin):
         # unfreeze self.aggregator.patch_embed 
         # for param in self.aggregator.patch_embed.parameters():
         #     param.requires_grad = True 
-            
-            
+    def ptq_quantize(self,weight_dtype="int4"):
+        # fp8_e5m2 int4 int8
+        config=PostTrainingQuantizerConfig.from_dict(
+            {
+                "global_config": {
+                    "weight_dtype": weight_dtype,  
+                },
+            }
+        )
+        ptq = PostTrainingQuantizer(self.aggregator, config)
+        self.aggregator = ptq.compress()
+        
+        #freeze the parameters again
+        for param in self.parameters():
+            param.requires_grad = False
+    
     def upload_weight(self):
         import os
         from safetensors.torch import save_file
@@ -107,9 +124,12 @@ class VGGT_ENC(nn.Module, PyTorchModelHubMixin):
         
         features = aggregated_tokens_list[-1]  #b,w*h,dim # Get the last aggregated tokens for the current iteration
         features = features[:,:,patch_start_idx:]  # Remove camera tokens
+        camera_tokens = aggregated_tokens_list[0][:, :, :patch_start_idx]  # Get camera tokens from the first iteration
         return features
        
 if __name__=="__main__":
+    import os
+    os.environ["CUDA_VISIBLE_DEVICES"] = "5"
     # 初始化模型
     import bitsandbytes as bnb
     from transformers import BitsAndBytesConfig
@@ -150,21 +170,35 @@ if __name__=="__main__":
     # 测试量化后的耗时和输出
    
     with torch.no_grad():
-        with torch.cuda.amp.autocast(dtype=dtype):
+        with torch.amp.autocast('cuda',dtype=dtype):
             start_time = time.time()
             features_after = model(images)
             end_time = time.time()
     time_after = end_time - start_time
-    print(f"量化后耗时: {time_after:.4f}秒")
-    print(f"量化后输出特征形状: {features_after.shape}")
+    print(f"BF16后耗时: {time_after:.4f}秒")
+    print(f"BF16后输出特征形状: {features_after.shape}")
 
     # 计算输出结果的余弦相似度
     cossim = cosine_similarity(features_before.flatten(), features_after.flatten(), dim=0)
-    print(f"量化前后输出结果的余弦相似度: {cossim.item():.4f}")
+    print(f"BF16前后输出结果的余弦相似度: {cossim.item():.4f}")
+    
+    model.to('cpu')
+    model.ptq_quantize()
+    model.to('cuda')
+    with torch.no_grad():
+        start_time = time.time()
+        features_after_quantized = model(images)
+        end_time = time.time()
+    time_after_quantized = end_time - start_time
+    print(f"量化后耗时: {time_after_quantized:.4f}秒")
+    print(f"量化后输出特征形状: {features_after_quantized.shape}")
+    # 计算量化后输出结果的余弦相似度
+    cossim_quantized = cosine_similarity(features_before.flatten(), features_after_quantized.flatten(), dim=0)
+    print(f"量化前后输出结果的余弦相似度: {cossim_quantized.item():.4f}")                   
 
     # 上传量化后的模型权重到 Hugging Face
-    model.upload_weight()
+    # model.upload_weight()
 
-    # 从 Hugging Face 加载量化后的模型
-    new_model = VGGT_ENC.from_pretrained("T1g3rGE/VGGT_Enc")
-    print("从 Hugging Face 加载量化后的模型成功")
+    # # 从 Hugging Face 加载量化后的模型
+    # new_model = VGGT_ENC.from_pretrained("T1g3rGE/VGGT_Enc")
+    # print("从 Hugging Face 加载量化后的模型成功")
