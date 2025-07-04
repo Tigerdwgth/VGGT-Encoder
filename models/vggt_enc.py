@@ -123,8 +123,8 @@ class VGGT_ENC(nn.Module, PyTorchModelHubMixin):
         aggregated_tokens_list, patch_start_idx = self.aggregator(images)
         
         features = aggregated_tokens_list[-1]  #b,w*h,dim # Get the last aggregated tokens for the current iteration
-        features = features[:,:,patch_start_idx:]  # Remove camera tokens
-        camera_tokens = aggregated_tokens_list[0][:, :, :patch_start_idx]  # Get camera tokens from the first iteration
+        # features = features[:,:,patch_start_idx:]  # Remove camera tokens
+        # camera_tokens = aggregated_tokens_list[0][:, :, :patch_start_idx]  # Get camera tokens from the first iteration
         return features
        
 if __name__=="__main__":
